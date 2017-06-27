@@ -401,7 +401,9 @@ extern int file_drop(int);
 void *getf(int fd)
 {
     struct spl_fileproc *sfp = NULL;
-#if 0
+	HANDLE h;
+
+#if 1
     struct fileproc     *fp  = NULL;
 	struct vnode *vp;
 	uint32_t vid;
@@ -423,19 +425,22 @@ void *getf(int fd)
      * The f_vnode ptr is used to point back to the "sfp" node itself, as it is
      * the only information passed to vn_rdwr.
      */
-    sfp->f_vnode  = sfp;
+
+	ObReferenceObjectByHandle(fd, 0, 0, KernelMode, &fp, 0);
+
+	sfp->f_vnode  = sfp;
     sfp->f_fd     = fd;
     sfp->f_offset = 0;
-//    sfp->f_proc   = current_proc();
+    sfp->f_proc   = current_proc();
     sfp->f_fp     = fp;
 
 	/* Also grab vnode, so we can fish out the minor, for onexit */
-	if (!file_vnode_withvid(fd, &vp, &vid)) {
+//	if (!file_vnode_withvid(fd, &vp, &vid)) {
 		//if (vnode_vtype(vp) != VDIR) {
 		//	sfp->f_file = minor(vnode_specrdev(vp));
 		//}
-		file_drop(fd);
-	}
+//		file_drop(fd);
+//	}
 
 	mutex_enter(&spl_getf_lock);
 	list_insert_tail(&spl_getf_list, sfp);
@@ -463,13 +468,14 @@ struct vnode *getf_vnode(void *fp)
 
 void releasef(int fd)
 {
-#if 0
+
+#if 1
     struct spl_fileproc *fp = NULL;
     struct proc *p = NULL;
 
     //printf("SPL: releasef(%d)\n", fd);
 
-//    p = current_proc();
+    p = current_proc();
 	mutex_enter(&spl_getf_lock);
 	for (fp = list_head(&spl_getf_list); fp != NULL;
 	     fp = list_next(&spl_getf_list, fp)) {
@@ -481,10 +487,11 @@ void releasef(int fd)
     //printf("SPL: releasing %p\n", fp);
 
     // Release the hold from getf().
-    if (fp->f_writes)
-        fp_drop_written(p, fd, fp->f_fp, 0/*!locked*/);
-    else
-        fp_drop(p, fd, fp->f_fp, 0/*!locked*/);
+//    if (fp->f_writes)
+//        fp_drop_written(p, fd, fp->f_fp, 0/*!locked*/);
+//    else
+//        fp_drop(p, fd, fp->f_fp, 0/*!locked*/);
+	ObDereferenceObject(fp->f_fp);
 
     // Remove node from the list
 	mutex_enter(&spl_getf_lock);
@@ -526,19 +533,25 @@ int spl_vn_rdwr(enum uio_rw rw,
     //vctx = vfs_context_create((vfs_context_t)0);
     //auio = uio_create(1, 0, spacetype, rw);
     ///uio_reset(auio, offset, spacetype, rw);
-    //uio_addiov(auio, (uint64_t)(uintptr_t)base, len);
 
-    if (rw == UIO_READ) {
-     //   error = fo_read(sfp->f_fp, auio, ioflag, vctx);
+    //uio_addiov(auio, (uint64_t)(uintptr_t)base, len);
+	//LARGE_INTEGER Offset;
+	//Offset.QuadPart = offset;
+	IO_STATUS_BLOCK iob;
+
+	if (rw == UIO_READ) {
+		error = ZwReadFile(sfp->f_fd, NULL, NULL, NULL, &iob, base, len, NULL, NULL);
+		//   error = fo_read(sfp->f_fp, auio, ioflag, vctx);
     } else {
        // error = fo_write(sfp->f_fp, auio, ioflag, vctx);
-        sfp->f_writes = 1;
+		error = ZwWriteFile(sfp->f_fd, NULL, NULL, NULL, &iob, base, len, NULL, NULL);
+		sfp->f_writes = 1;
     }
 
     if (residp) {
-        //*residp = uio_resid(auio);
+        *residp = len - iob.Information;
     } else {
-        //if (uio_resid(auio) && error == 0)
+        if ((iob.Information < len) && error == 0)
             error = EIO;
     }
 
