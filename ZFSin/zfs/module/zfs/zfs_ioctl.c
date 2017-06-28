@@ -6001,7 +6001,7 @@ zfsdev_release(dev_t dev, int flags, int devtype, struct proc *p)
 
 #ifdef _WIN32
 NTSTATUS
-zfsdev_ioctl(PDEVICE_OBJECT DeviceObject, PIRP Irp)
+zfsdev_ioctl(PDEVICE_OBJECT DeviceObject, PIRP Irp, int flag)
 #else
 static int
 zfsdev_ioctl(dev_t dev, u_long cmd, caddr_t arg, int xflag, struct proc *p)
@@ -6009,7 +6009,7 @@ zfsdev_ioctl(dev_t dev, u_long cmd, caddr_t arg, int xflag, struct proc *p)
 {
 	zfs_cmd_t *zc;
 	uint_t vecnum;
-	int error, rc, len = 0, flag = 0;
+	int error, rc, len = 0;
 	dev_t dev = 0;
 	u_long cmd = 0;
 	caddr_t arg = NULL;
@@ -6224,7 +6224,7 @@ zfsdev_ioctl(dev_t dev, u_long cmd, caddr_t arg, int xflag, struct proc *p)
 	}
 
  out:
-	dprintf("ZFS: ioctl out: %d\n", error);
+	dprintf("ZFS: ioctl out: %d (0x%x)\n", error, error);
 	nvlist_free(innvl);
 
 	//arg = Irp->UserBuffer;
@@ -6261,7 +6261,7 @@ end:
 	* Darwin ioctl does the actual copyout, and that we use FKIOCTL here.
 	* So we can change it directly.
 	*/
-	((zfs_cmd_t *)arg)->zc_ioc_error = error;  // We checked OtubufLen is == zfs_cmd_t
+	((zfs_cmd_t *)arg)->zc_ioc_error = error;  // We checked OutbufLen is == zfs_cmd_t
 
 
 	dprintf("ioctl out result %d\n", error);
