@@ -2242,36 +2242,6 @@ NTSTATUS flush_buffers(PDEVICE_OBJECT DeviceObject, PIRP Irp, PIO_STACK_LOCATION
 
 #define IOCTL_VOLUME_POST_ONLINE    CTL_CODE(IOCTL_VOLUME_BASE, 25, METHOD_BUFFERED, FILE_READ_ACCESS | FILE_WRITE_ACCESS)
 
-/*
- * We received a long-lived ioctl, so lets setup a taskq to handle it, and return pending
- */
-void zfsdev_async_thread(void *arg)
-{
-	NTSTATUS Status;
-	PIRP Irp;
-	Irp = (PIRP)arg;
-	
-	dprintf("%s: starting ioctl\n", __func__);
-
-	/* Use FKIOCTL to make sure it calls bcopy instead */
-	Status = zfsdev_ioctl(NULL, Irp, FKIOCTL); 
-
-	dprintf("%s: finished ioctl %d\n", __func__, Status);
-
-	PMDL mdl = Irp->Tail.Overlay.DriverContext[0];
-	if (mdl) {
-		MmUnlockPages(mdl);
-		IoFreeMdl(mdl);
-		Irp->Tail.Overlay.DriverContext[0] = NULL;
-	}
-	void *fp = Irp->Tail.Overlay.DriverContext[1];
-	if (fp) {
-		ObDereferenceObject(fp);
-		ZwClose(Irp->Tail.Overlay.DriverContext[2]);
-	}
-
-	IoCompleteRequest(Irp, Status == STATUS_SUCCESS ? IO_DISK_INCREMENT : IO_NO_INCREMENT);
-}
 
 NTSTATUS zfsdev_async(PDEVICE_OBJECT DeviceObject, PIRP Irp)
 {
